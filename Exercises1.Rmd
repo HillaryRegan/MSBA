@@ -1,0 +1,287 @@
+---
+title: "Exercises 1"
+output: html_document
+---
+
+### Probability practice
+#### Part A.
+Here's a question a friend of mine was asked when he interviewed at Google.
+
+Visitors to your website are asked to answer a single survey question before they get access to the content on the page. Among all of the users, there are two categories: Random Clicker (RC), and Truthful Clicker (TC). There are two possible answers to the survey: yes and no. Random clickers would click either one with equal probability. You are also giving the information that the expected fraction of random clickers is 0.3.
+
+After a trial period, you get the following survey results: 65% said Yes and 35% said No.
+
+What fraction of people who are truthful clickers answered yes?
+
+#### Answer:
+Using the Law of Total Probability ("mixture rule"):
+$$ P(Y) = P(Y|RC) * P(RC) + P(Y|TC) * P(TC) $$
+where: 
+
+- P(Y) = .65, the probability a person said Yes
+
+- P(Y|RC) = .5 , the probability a person said Yes given they randomly clicked
+
+- P(RC) = .3 the probability a person randomly clicked
+
+- P(Y|TC) = ?, the probability a person said Yes given they truthfully clicked
+
+- P(TC) = .7, the probability a person truthfully clicked
+
+Therefore, using the formula for the Law of Total Probability: 
+$$ .65 = (.5)*(.3) + P(Y|TC)*(.7) $$
+Solving for P(Y|TC) gives: 
+
+```{r}
+ProbabilityTruthYes = (.65-(.5*.3))/.7
+```
+
+$$ P(Y|TC) = `r ProbabilityTruthYes` $$
+The fraction of people who are truthful clickers answered yes is `r ProbabilityTruthYes`.
+
+#### Part B.
+
+Imagine a medical test for a disease with the following two attributes:
+
+The sensitivity is about 0.993. That is, if someone has the disease, there is a probability of 0.993 that they will test positive.
+The specificity is about 0.9999. This means that if someone doesn't have the disease, there is probability of 0.9999 that they will test negative.
+In the general population, incidence of the disease is reasonably rare: about 0.0025% of all people have it (or 0.000025 as a decimal probability).
+
+Suppose someone tests positive. What is the probability that they have the disease? In light of this calculation, do you envision any problems in implementing a universal testing policy for the disease?
+
+#### Answer:
+
+Using Bayes' Rule: 
+$$ P(A|B) = \frac{P(A)*P(B|A)}{P(B)} $$
+
+A: person has the disease
+
+B: test is positive
+
+- P(A|B) = ?, the probability of having the disease given the test was positive
+
+- P(A) = .000025, the probability of having the disease
+
+- P(B|A) = .993, the probability that the test is positive given the person has the disease
+
+- P(B) = ?, the probability the test is postive.
+
+P(B) can be found by using the Law of Total Probability ("mixture rule"):
+$$ P(B) = P(B|A) * P(A) + P(B|notA) * P(notA) $$
+where P(B|notA) = (1-.9999), the probability that the test is positive given the person does not have the disease
+
+$$ P(B) = (.993)*(.000025) + (1-0.9999)*(1-.000025) $$
+
+```{r}
+ProbabilityTestPositive = (.993)*(.000025) + (1-0.9999)*(1-.000025)
+ProbabilityDiseasePositive = (.000025)*(.993)/ProbabilityTestPositive
+```
+$$ P(B) = `r ProbabilityTestPositive`$$
+
+so, $$ P(A|B) = \frac{P(A)*P(B|A)}{P(B)} = \frac{(.000025)(.993)}{`r ProbabilityTestPositive`} = `r ProbabilityDiseasePositive` $$
+
+The probability that a person has the disease given the test is positive is `r ProbabilityDiseasePositive`. Since the chance of this is small, I do envision problems in implementing a universal testing policy for the disease. This is not a good enough test for the disease.
+
+
+### Exploratory analysis: green buildings
+
+An Austin real-estate developer is interested in the possible economic impact of "going green" in her latest project: a new 15-story mixed-use building on East Cesar Chavez, just across I-35 from downtown. Will investing in a green building be worth it, from an economic perspective? The baseline construction costs are $100 million, with a 5% expected premium for green certification.
+
+Do you agree with the conclusions of her on-staff stats guru? If so, point to evidence supporting his case. If not, explain specifically where and why the analysis goes wrong, and how it can be improved. (For example, do you see the possibility of confounding variables for the relationship between rent and green status?)
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(mosaic)
+library(foreach)
+GreenBuildings = read.csv('C:/Users/hilla/Desktop/R Dir/Stats part 2/greenbuildings.csv')
+```
+```{r}
+summary(GreenBuildings)
+```
+
+
+```{r echo=FALSE}
+hist(GreenBuildings$leasing_rate, main = "Histogram of the Leasing Rate of Buildings")
+```
+
+
+The "stats guru" was correct when he said "a handful of the buildings in the data set had very low occupancy rates" which is shown by the histogram above. Yet, I do not agree with removing these buildings from consideration. There is not a guarantee that the new building will have a high occupancy rate. 
+
+```{r}
+boxplot(GreenBuildings$Rent~GreenBuildings$green_rating, main="Rent of Buildings", xlab="Green Building or not", ylab="Rent")
+
+```
+
+On the x-axis, 0 represents the buildings that are not green. 1 represents buildings that have a green rating. The median rent is very similar for the two types of buildings, as is the first and third quartiles, but the rent for a green building is slightly higher. There are more outliers for non-green buildings.
+
+I do see the possibility of confounding variables for the relationship between rent and green status. The green building costs more to build, so it is likely that rent is higher to account for this.
+
+
+### Bootstrapping
+
+```{r}
+library(mosaic)
+library(fImport)
+library(foreach)
+
+# Import a few stocks
+mystocks = c("SPY", "TLT", "LQD", "EEM", "VNQ")
+myprices = yahooSeries(mystocks, from='2005-01-01', to='2016-07-30')
+# The first few rows
+head(myprices)
+```
+
+I included 2008, the year the housing market crashed, to ensure that I get both good runs and bad runs of stock-market performance.
+
+```{r}
+# A helper function for calculating percent returns from a Yahoo Series
+YahooPricesToReturns = function(series) {
+	mycols = grep('Adj.Close', colnames(series))
+	closingprice = series[,mycols]
+	N = nrow(closingprice)
+	percentreturn = as.data.frame(closingprice[2:N,]) / as.data.frame(closingprice[1:(N-1),]) - 1
+	mynames = strsplit(colnames(percentreturn), '.', fixed=TRUE)
+	mynames = lapply(mynames, function(x) return(paste0(x[1], ".PctReturn")))
+	colnames(percentreturn) = mynames
+	as.matrix(na.omit(percentreturn))
+}
+
+#plotting
+df=myprices[,c(6,12,18,24,30)]
+plot(df, plot.type="single", col = 1:ncol(df))
+legend("topleft", colnames(df), col=1:ncol(df), lty=1, cex=.65)
+
+# Compute the returns from the closing prices
+myreturns = YahooPricesToReturns(myprices)
+n_days = 20
+
+############################even split###############################
+even_split = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) 
+  for(today in 1:n_days) {
+    return.today = resample(myreturns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+  }
+  wealthtracker
+}
+
+head(even_split)
+hist(even_split[,n_days], 25)
+mean_even_split = mean(even_split[,n_days])
+mean_even_split
+abline(v=mean_even_split, lwd=4, col='blue')
+
+# Profit/loss
+hist(even_split[,n_days]- 10000)
+
+# Calculate 5% value at risk
+quantile(even_split[,n_days], 0.05) - 10000
+
+
+####################################safer choice##############################
+head(myreturns)
+myreturns_safe=myreturns[,c(3,4,5)]   #'LQD','EEM','VNQ'
+head(myreturns_safe)
+
+safe = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.6, 0.2, 0.2)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) 
+  for(today in 1:n_days) {
+    return.today = resample(myreturns_safe, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+  }
+  wealthtracker
+}
+
+head(safe)
+hist(safe[,n_days], 25)
+mean_safe = mean(safe[,n_days])
+mean_safe
+abline(v=mean_safe, lwd=4, col='blue')
+
+# Profit/loss
+hist(safe[,n_days]- 10000)
+
+# Calculate 5% value at risk
+quantile(safe[,n_days], 0.05) - 10000
+
+
+################################aggressive##############################
+myreturns_agg=myreturns[,c(1,2)]   #"SPY" and 'TLT'
+head(myreturns_agg)
+
+agg = foreach(i=1:5000, .combine='rbind') %do% {
+  totalwealth = 100000
+  weights = c(0.8, 0.2)
+  holdings = weights * totalwealth
+  wealthtracker = rep(0, n_days) 
+  for(today in 1:n_days) {
+    return.today = resample(myreturns_agg, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    totalwealth = sum(holdings)
+    wealthtracker[today] = totalwealth
+  }
+  wealthtracker
+}
+
+head(agg)
+hist(agg[,n_days], 25)
+mean_agg = mean(agg[,n_days])
+mean_agg
+abline(v=mean_agg, lwd=4, col='blue')
+
+# Profit/loss
+hist(agg[,n_days]- 10000)
+
+# Calculate 5% value at risk
+quantile(agg[,n_days], 0.05) - 10000
+```
+
+
+### Marketing
+
+```{r}
+userdata = read.csv("C:/Users/hilla/Desktop/R Dir/Stats part 2/social_marketing.csv", header=TRUE, row.names=1)
+
+library(ggplot2)
+# Normalize phrase counts to phrase frequencies
+Z = userdata/rowSums(userdata)
+
+# PCA
+pc2 = prcomp(Z, scale=TRUE)
+loadings = pc2$rotation
+scores = pc2$x
+
+summary(pc2)
+plot(pc2)
+biplot(pc2)
+
+qplot(scores[,1], scores[,2], xlab='Component 1', ylab='Component 2')
+
+# The top words associated with each component
+o1 = order(loadings[,1])
+colnames(Z)[head(o1,5)]
+colnames(Z)[tail(o1,5)]
+
+o2 = order(loadings[,2])
+colnames(Z)[head(o2,5)]
+colnames(Z)[tail(o2,5)]
+
+o3 = order(loadings[,3])
+colnames(Z)[head(o3,5)]
+colnames(Z)[tail(o3,5)]
+
+o4 = order(loadings[,4])
+colnames(Z)[head(o4,5)]
+colnames(Z)[tail(o4,5)]
+
+```
+
